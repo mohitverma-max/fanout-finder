@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Fan-Out Finder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f5f7f9; --surface:#ffffff; --surface-2:#e9f6f1; --surface-3:#dbe6e1;
+    --border:#cfd9d5; --ink:#142236; --ink-muted:#54595f; --ink-faint:#8996a0;
+    --accent:#1aab7f; --accent-contrast:#ffffff; --accent-tint:#d9f2e9; --accent-tint-ink:#0b3d2c;
+    --danger:#a3453a; --danger-tint:#f5e3e0;
+    --warn:#8a6d1c; --warn-tint:#f5efd9;
+    --shadow: 0 1px 2px rgba(20,34,54,.06), 0 8px 24px rgba(20,34,54,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512; --surface:#121b18; --surface-2:#15231d; --surface-3:#1c2c25;
+      --border:#2a3a33; --ink:#eaf3ee; --ink-muted:#a9bdb4; --ink-faint:#728278;
+      --accent:#3ed9a6; --accent-contrast:#062018; --accent-tint:#15382d; --accent-tint-ink:#a8f0d7;
+      --danger:#e2897c; --danger-tint:#3a2320;
+      --warn:#e6c766; --warn-tint:#332c14;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512; --surface:#121b18; --surface-2:#15231d; --surface-3:#1c2c25;
+    --border:#2a3a33; --ink:#eaf3ee; --ink-muted:#a9bdb4; --ink-faint:#728278;
+    --accent:#3ed9a6; --accent-contrast:#062018; --accent-tint:#15382d; --accent-tint-ink:#a8f0d7;
+    --danger:#e2897c; --danger-tint:#3a2320;
+    --warn:#e6c766; --warn-tint:#332c14;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{ max-width:1080px; margin:0 auto; padding:28px 20px 64px; }
+  header.top{
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end;
+    gap:10px; margin-bottom:18px;
+  }
+  .stat{ font-size:13px; color:var(--ink-muted); }
+  .stat b{ color:var(--ink); font-family:'IBM Plex Mono', monospace; }
+  h1,h2,h3{ font-family:'Archivo', sans-serif; margin:0; }
+  .panel{
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:22px; box-shadow:var(--shadow); margin-bottom:20px;
+  }
+  .panel h2{
+    font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent);
+    margin-bottom:16px; font-weight:700;
+  }
+  label{ display:block; font-size:13px; font-weight:600; color:var(--ink-muted); margin-bottom:6px; }
+  input[type="text"], input[type="password"], textarea{
+    width:100%; padding:11px 13px; border-radius:9px; border:1px solid var(--border);
+    background:var(--bg); color:var(--ink); font-family:'IBM Plex Sans', sans-serif; font-size:14.5px;
+    outline:none; transition:border-color .15s;
+  }
+  input[type="text"]:focus, input[type="password"]:focus, textarea:focus{ border-color:var(--accent); }
+  .field{ margin-bottom:16px; }
+  .field .hint{ font-size:12px; color:var(--ink-faint); margin-top:5px; }
+  .field .hint a{ color:var(--accent); text-decoration:none; font-weight:600; }
+  .field .hint a:hover{ text-decoration:underline; }
+  .two-col{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:640px){ .two-col{ grid-template-columns:1fr; } }
+  .key-row{ display:flex; gap:8px; align-items:stretch; }
+  .key-row input{ flex:1; }
+  .icon-btn{
+    flex-shrink:0; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-muted);
+    border-radius:9px; padding:0 13px; cursor:pointer; font-size:13px; font-weight:600;
+  }
+  .icon-btn:hover{ color:var(--ink); }
+  details.advanced{ margin-top:10px; }
+  details.advanced summary{
+    cursor:pointer; font-size:12.5px; color:var(--ink-faint); font-weight:600; user-select:none;
+  }
+  details.advanced .field{ margin-top:12px; margin-bottom:0; }
+  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+  .chip{
+    display:inline-flex; align-items:center; gap:6px; padding:7px 13px; border-radius:999px;
+    border:1px solid var(--border); background:var(--surface-2); color:var(--ink-muted);
+    font-size:13px; font-weight:600; cursor:pointer; user-select:none; transition:all .12s;
+  }
+  .chip:hover{ border-color:var(--accent); }
+  .chip.on{ background:var(--accent-tint); border-color:var(--accent); color:var(--accent-tint-ink); }
+  .chip .dot{ width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.5; }
+  .actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+  .btn{
+    appearance:none; border:none; border-radius:10px; padding:12px 20px; font-size:14.5px;
+    font-weight:700; cursor:pointer; font-family:'IBM Plex Sans', sans-serif; display:inline-flex;
+    align-items:center; gap:8px; transition:transform .08s, opacity .12s;
+  }
+  .btn:active{ transform:scale(.98); }
+  .btn:disabled{ opacity:.55; cursor:not-allowed; }
+  .btn.primary{ background:var(--accent); color:var(--accent-contrast); }
+  .btn.primary:hover:not(:disabled){ opacity:.92; }
+  .btn.ghost{ background:var(--surface-2); color:var(--ink-muted); border:1px solid var(--border); }
+  .btn.ghost:hover{ color:var(--ink); }
+  .btn.small{ padding:7px 13px; font-size:12.5px; border-radius:8px; }
+  .spinner{
+    width:15px; height:15px; border-radius:50%; border:2px solid rgba(255,255,255,.4);
+    border-top-color:currentColor; animation:spin .7s linear infinite; display:inline-block;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .msg{ margin-top:14px; padding:12px 14px; border-radius:9px; font-size:13.5px; line-height:1.5; }
+  .msg.error{ background:var(--danger-tint); color:var(--danger); }
+  .msg.warn{ background:var(--warn-tint); color:var(--warn); }
+  .progress-line{ font-size:12.5px; color:var(--ink-faint); margin-top:10px; font-family:'IBM Plex Mono', monospace; }
+  .filters{ display:flex; flex-wrap:wrap; gap:22px; margin-bottom:4px; }
+  .filter-group{ flex:1; min-width:220px; }
+  .filter-group .label{ font-size:12px; font-weight:700; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; display:block; }
+  .results-head{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+  .count-line{ font-size:13px; color:var(--ink-muted); }
+  .count-line b{ color:var(--ink); }
+  table.results{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  table.results th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint);
+    padding:8px 10px; border-bottom:2px solid var(--border); font-weight:700;
+  }
+  table.results td{ padding:11px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  table.results tr:last-child td{ border-bottom:none; }
+  .q-text{ font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--ink); }
+  .reason{ font-size:12px; color:var(--ink-faint); margin-top:3px; }
+  .badge{
+    display:inline-block; padding:3px 9px; border-radius:6px; font-size:11px; font-weight:700;
+    background:var(--surface-3); color:var(--ink-muted); white-space:nowrap;
+  }
+  .badge.priority-high{ background:var(--accent-tint); color:var(--accent-tint-ink); }
+  .badge.priority-medium{ background:var(--surface-3); color:var(--ink-muted); }
+  .badge.priority-low{ background:var(--surface-2); color:var(--ink-faint); }
+  .row-copy{ background:transparent; border:1px solid var(--border); color:var(--ink-faint); border-radius:7px; padding:5px 9px; font-size:11.5px; cursor:pointer; font-weight:600; }
+  .row-copy:hover{ color:var(--ink); border-color:var(--accent); }
+  .empty-state{ text-align:center; padding:36px 20px; color:var(--ink-faint); font-size:14px; }
+  .recent{ margin-top:6px; }
+  .recent .label{ font-size:12px; color:var(--ink-faint); margin-right:8px; }
+  .recent button{
+    background:none; border:none; color:var(--accent); font-size:12.5px; cursor:pointer;
+    font-weight:600; padding:2px 0; margin-right:14px; font-family:'IBM Plex Sans', sans-serif;
+  }
+  .recent button:hover{ text-decoration:underline; }
+  footer.note{ font-size:12px; color:var(--ink-faint); line-height:1.6; margin-top:26px; text-align:center; }
+  footer.note a{ color:var(--accent); }
+  .eyebrow-row{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .key-status{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+  .key-status.set{ background:var(--accent-tint); color:var(--accent-tint-ink); }
+  .key-status.unset{ background:var(--surface-3); color:var(--ink-faint); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="stat"><b id="genCount">0</b> fan-outs generated this session</div>
+  </header>
+
+  <main>
+
+    <section class="panel" id="setupPanel">
+      <div class="eyebrow-row">
+        <h2 style="margin-bottom:0;">Connect your AI key</h2>
+        <span class="key-status unset" id="keyStatus">not set</span>
+      </div>
+      <div class="field">
+        <label for="apiKey">Gemini API key</label>
+        <div class="key-row">
+          <input type="password" id="apiKey" placeholder="Paste your key — stored only in this browser" autocomplete="off">
+          <button class="icon-btn" id="toggleKey" type="button">Show</button>
+          <button class="icon-btn" id="forgetKey" type="button">Forget</button>
+        </div>
+        <div class="hint">Free to get, no card required: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio → Create API key</a>. Your key is sent directly from your browser to Google — it never touches any server of ours (we don't have one).</div>
+      </div>
+      <details class="advanced">
+        <summary>Advanced: model name</summary>
+        <div class="field">
+          <input type="text" id="modelName" value="gemini-2.5-flash">
+          <div class="hint">Default works on Google's free tier. Change only if Google renames or retires this model later.</div>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel">
+      <h2>Seed your query</h2>
+      <div class="field">
+        <label for="keyword">Seed keyword</label>
+        <input type="text" id="keyword" placeholder="e.g., email marketing automation">
+      </div>
+      <div class="field">
+        <label for="context">Context <span style="font-weight:400; color:var(--ink-faint);">(optional)</span></label>
+        <input type="text" id="context" placeholder="e.g., for a B2B SaaS audience, or a local service business in Austin">
+        <div class="hint">Sharpens every variant toward the audience you actually write for.</div>
+      </div>
+
+      <label style="margin-bottom:8px;">Variant types</label>
+      <div class="chips" id="typeChips"></div>
+
+      <div class="actions">
+        <button class="btn primary" id="generateBtn" type="button">Generate Fan-Out</button>
+        <button class="btn ghost" id="clearBtn" type="button">Reset</button>
+      </div>
+      <div id="statusMsg"></div>
+      <div class="recent" id="recentWrap" style="display:none;">
+        <span class="label">Recent:</span>
+        <span id="recentList"></span>
+      </div>
+    </section>
+
+    <section class="panel" id="resultsPanel" style="display:none;">
+      <div class="results-head">
+        <h2 style="margin-bottom:0;">Results</h2>
+        <div style="display:flex; gap:8px;">
+          <button class="btn small ghost" id="copyAllBtn" type="button">Copy all (for Sheets)</button>
+        </div>
+      </div>
+      <div class="filters">
+        <div class="filter-group">
+          <span class="label">Type</span>
+          <div class="chips" id="typeFilterChips"></div>
+        </div>
+        <div class="filter-group">
+          <span class="label">Intent</span>
+          <div class="chips" id="intentFilterChips"></div>
+        </div>
+      </div>
+      <div class="count-line" id="countLine" style="margin:14px 0 10px;"></div>
+      <div style="overflow-x:auto;">
+        <table class="results" id="resultsTable">
+          <thead>
+            <tr><th>Query</th><th>Type</th><th>Intent</th><th>Priority</th><th></th></tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="emptyFiltered" style="display:none;">No variants match the current filters.</div>
+    </section>
+
+  </main>
+
+  <footer class="note">
+    This tool calls Google's Gemini API directly from your browser with the key you paste in above — nothing is proxied, logged, or stored anywhere but this browser's local storage (your key and recent seed keywords). Every variant is scored fresh by the model each run; nothing here is a hardcoded placeholder. Google's own free-tier limits and pricing apply to your key, not ours.
+    <br>Road to Top 5 · The Fan-Out Finder
+  </footer>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var TYPES = [
+  { key:"Equivalent",    label:"Equivalent",    hint:"same intent, reworded" },
+  { key:"Follow-up",     label:"Follow-up",     hint:"the natural next question" },
+  { key:"Broader",       label:"Broader",       hint:"zoomed-out category" },
+  { key:"Narrower",      label:"Narrower",      hint:"long-tail specifics" },
+  { key:"Comparison",    label:"Comparison",    hint:"vs. and alternatives" },
+  { key:"Implied Need",  label:"Implied Need",  hint:"the real problem behind it" }
+];
+var INTENTS = ["Informational","Commercial","Transactional","Navigational"];
+var PRIORITY_ORDER = { "High":0, "Medium":1, "Low":2 };
+var VARIANTS_PER_TYPE = 4;
+
+var state = {
+  activeTypes: TYPES.map(function(t){ return t.key; }),
+  typeFilter: TYPES.map(function(t){ return t.key; }),
+  intentFilter: INTENTS.slice(),
+  results: []
+};
+
+function $(id){ return document.getElementById(id); }
+
+function loadPersisted(){
+  try{
+    var k = localStorage.getItem("fanoutfinder.apikey");
+    if (k) $("apiKey").value = k;
+    var m = localStorage.getItem("fanoutfinder.model");
+    if (m) $("modelName").value = m;
+  }catch(e){}
+  renderKeyStatus();
+}
+function savePersisted(){
+  try{
+    localStorage.setItem("fanoutfinder.apikey", $("apiKey").value.trim());
+    localStorage.setItem("fanoutfinder.model", $("modelName").value.trim());
+  }catch(e){}
+}
+function getRecents(){
+  try{ return JSON.parse(localStorage.getItem("fanoutfinder.recent") || "[]"); }catch(e){ return []; }
+}
+function pushRecent(kw){
+  try{
+    var list = getRecents().filter(function(x){ return x.toLowerCase() !== kw.toLowerCase(); });
+    list.unshift(kw);
+    localStorage.setItem("fanoutfinder.recent", JSON.stringify(list.slice(0,8)));
+  }catch(e){}
+  renderRecents();
+}
+function renderRecents(){
+  var list = getRecents();
+  var wrap = $("recentWrap"), holder = $("recentList");
+  if (!list.length){ wrap.style.display = "none"; return; }
+  wrap.style.display = "block";
+  holder.innerHTML = "";
+  list.forEach(function(kw){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = kw;
+    b.addEventListener("click", function(){ $("keyword").value = kw; $("keyword").focus(); });
+    holder.appendChild(b);
+  });
+}
+
+function renderKeyStatus(){
+  var set = $("apiKey").value.trim().length > 0;
+  var el = $("keyStatus");
+  el.textContent = set ? "key set" : "not set";
+  el.className = "key-status " + (set ? "set" : "unset");
+}
+
+function renderTypeChips(){
+  var wrap = $("typeChips");
+  wrap.innerHTML = "";
+  TYPES.forEach(function(t){
+    var c = document.createElement("div");
+    c.className = "chip" + (state.activeTypes.indexOf(t.key) > -1 ? " on" : "");
+    c.innerHTML = "<span class='dot'></span>" + t.label;
+    c.title = t.hint;
+    c.addEventListener("click", function(){
+      var i = state.activeTypes.indexOf(t.key);
+      if (i > -1) state.activeTypes.splice(i,1); else state.activeTypes.push(t.key);
+      renderTypeChips();
+    });
+    wrap.appendChild(c);
+  });
+}
+
+function renderFilterChips(){
+  var tWrap = $("typeFilterChips");
+  tWrap.innerHTML = "";
+  TYPES.forEach(function(t){
+    var c = document.createElement("div");
+    c.className = "chip" + (state.typeFilter.indexOf(t.key) > -1 ? " on" : "");
+    c.textContent = t.label;
+    c.addEventListener("click", function(){
+      var i = state.typeFilter.indexOf(t.key);
+      if (i > -1) state.typeFilter.splice(i,1); else state.typeFilter.push(t.key);
+      renderFilterChips(); renderResults();
+    });
+    tWrap.appendChild(c);
+  });
+  var iWrap = $("intentFilterChips");
+  iWrap.innerHTML = "";
+  INTENTS.forEach(function(intent){
+    var c = document.createElement("div");
+    c.className = "chip" + (state.intentFilter.indexOf(intent) > -1 ? " on" : "");
+    c.textContent = intent;
+    c.addEventListener("click", function(){
+      var i = state.intentFilter.indexOf(intent);
+      if (i > -1) state.intentFilter.splice(i,1); else state.intentFilter.push(intent);
+      renderFilterChips(); renderResults();
+    });
+    iWrap.appendChild(c);
+  });
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+function priorityBadgeClass(p){
+  if (p === "High") return "priority-high";
+  if (p === "Low") return "priority-low";
+  return "priority-medium";
+}
+
+function renderResults(){
+  var body = $("resultsBody");
+  body.innerHTML = "";
+  var filtered = state.results.filter(function(r){
+    return state.typeFilter.indexOf(r.type) > -1 && state.intentFilter.indexOf(r.intent) > -1;
+  }).slice().sort(function(a,b){
+    return (PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
+  });
+
+  $("countLine").innerHTML = "<b>" + filtered.length + "</b> of " + state.results.length + " variants shown";
+  $("emptyFiltered").style.display = filtered.length ? "none" : "block";
+
+  filtered.forEach(function(r){
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td><div class='q-text'>" + escapeHtml(r.query) + "</div><div class='reason'>" + escapeHtml(r.reason || "") + "</div></td>" +
+      "<td><span class='badge'>" + escapeHtml(r.type) + "</span></td>" +
+      "<td><span class='badge'>" + escapeHtml(r.intent) + "</span></td>" +
+      "<td><span class='badge " + priorityBadgeClass(r.priority) + "'>" + escapeHtml(r.priority) + "</span></td>" +
+      "<td><button class='row-copy' type='button'>Copy</button></td>";
+    tr.querySelector(".row-copy").addEventListener("click", function(e){
+      copyText(r.query);
+      var btn = e.currentTarget;
+      var old = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(function(){ btn.textContent = old; }, 1100);
+    });
+    body.appendChild(tr);
+  });
+}
+
+function copyText(text){
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).catch(function(){ fallbackCopy(text); });
+  } else {
+    fallbackCopy(text);
+  }
+}
+function fallbackCopy(text){
+  var ta = document.createElement("textarea");
+  ta.value = text; ta.style.position = "fixed"; ta.style.left = "-9999px";
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+function showMsg(text, kind){
+  var el = $("statusMsg");
+  if (!text){ el.innerHTML = ""; return; }
+  el.innerHTML = "<div class='msg " + (kind || "error") + "'>" + escapeHtml(text) + "</div>";
+}
+
+function buildPrompt(seed, context, activeTypeKeys){
+  var typeList = TYPES.filter(function(t){ return activeTypeKeys.indexOf(t.key) > -1; });
+  var typeLines = typeList.map(function(t){ return "- " + t.key + ": " + t.hint; }).join("\n");
+  var total = typeList.length * VARIANTS_PER_TYPE;
+  return [
+    "You are a search-query expansion engine for SEO content planning.",
+    "Seed keyword: \"" + seed + "\"",
+    context ? ("Additional context about the target audience: " + context) : "",
+    "Generate exactly " + VARIANTS_PER_TYPE + " distinct search-query variants for EACH of these " + typeList.length + " semantic types (total " + total + " variants):",
+    typeLines,
+    "For every variant, classify its search intent as exactly one of: Informational, Commercial, Transactional, Navigational.",
+    "Assign a priority of exactly one of: High, Medium, Low — reflecting how valuable it would be to target this query with dedicated content, based on how directly it connects to the seed keyword's core commercial or informational value.",
+    "Give a short one-sentence reason (under 14 words) for that priority.",
+    "Rules: do not repeat the seed keyword verbatim as a variant. Do not duplicate the same query across types. Keep queries realistic, like something a person would actually type or ask. Return ONLY the JSON array — no commentary, no markdown fences."
+  ].filter(Boolean).join("\n");
+}
+
+function buildSchema(){
+  return {
+    type: "ARRAY",
+    items: {
+      type: "OBJECT",
+      properties: {
+        type: { type: "STRING", enum: TYPES.map(function(t){ return t.key; }) },
+        query: { type: "STRING" },
+        intent: { type: "STRING", enum: INTENTS },
+        priority: { type: "STRING", enum: ["High","Medium","Low"] },
+        reason: { type: "STRING" }
+      },
+      required: ["type","query","intent","priority","reason"]
+    }
+  };
+}
+
+function fetchWithTimeout(url, opts, ms){
+  var controller = new AbortController();
+  var timer = setTimeout(function(){ controller.abort(); }, ms);
+  return fetch(url, Object.assign({}, opts, { signal: controller.signal })).finally(function(){
+    clearTimeout(timer);
+  });
+}
+
+async function callGemini(apiKey, model, prompt, schema){
+  var url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(apiKey);
+  var body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: schema,
+      temperature: 0.9
+    }
+  };
+  var res;
+  try{
+    res = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }, 45000);
+  }catch(e){
+    if (e && e.name === "AbortError") throw new Error("Request timed out after 45s. Try again.");
+    throw new Error("Network error reaching Google's API. Check your connection.");
+  }
+
+  var payload = null;
+  try{ payload = await res.json(); }catch(e){}
+
+  if (!res.ok){
+    var apiMsg = payload && payload.error && payload.error.message;
+    if (res.status === 400 && apiMsg && /API key/i.test(apiMsg)) throw new Error("That API key was rejected by Google. Double-check you copied it correctly.");
+    if (res.status === 403) throw new Error("Google rejected this key (403). It may be restricted or not enabled for the Gemini API.");
+    if (res.status === 429) throw new Error("Rate limit hit on your key's free tier. Wait a moment and try again.");
+    throw new Error(apiMsg || ("Request failed with status " + res.status + "."));
+  }
+
+  var candidate = payload && payload.candidates && payload.candidates[0];
+  if (!candidate) throw new Error("Google returned no result. Try again.");
+  if (candidate.finishReason === "SAFETY") throw new Error("The response was blocked by Google's safety filters. Try rephrasing the seed keyword.");
+
+  var text = candidate.content && candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].text;
+  if (!text) throw new Error("Google returned an empty response.");
+
+  var variants;
+  try{ variants = JSON.parse(text); }catch(e){ throw new Error("The model's response wasn't valid JSON. Try again."); }
+  if (!Array.isArray(variants)) throw new Error("Unexpected response shape from the model.");
+  return variants;
+}
+
+var sessionCount = 0;
+function bumpCounter(n){
+  sessionCount += n;
+  $("genCount").textContent = sessionCount;
+}
+
+async function onGenerate(){
+  var seed = $("keyword").value.trim();
+  var context = $("context").value.trim();
+  var apiKey = $("apiKey").value.trim();
+  var model = $("modelName").value.trim() || "gemini-2.5-flash";
+
+  showMsg("");
+  if (!seed){ showMsg("Enter a seed keyword first."); $("keyword").focus(); return; }
+  if (!apiKey){ showMsg("Paste your Gemini API key first — it's free, see the link above."); $("apiKey").focus(); return; }
+  if (!state.activeTypes.length){ showMsg("Turn on at least one variant type."); return; }
+
+  savePersisted();
+  renderKeyStatus();
+
+  var btn = $("generateBtn");
+  btn.disabled = true;
+  var originalLabel = btn.innerHTML;
+  btn.innerHTML = "<span class='spinner'></span> Generating…";
+  $("progressLine") && ($("progressLine").textContent = "");
+
+  try{
+    var prompt = buildPrompt(seed, context, state.activeTypes);
+    var schema = buildSchema();
+    var variants = await callGemini(apiKey, model, prompt, schema);
+
+    var cleaned = variants.filter(function(v){
+      return v && typeof v.query === "string" && v.query.trim().length > 0;
+    }).map(function(v){
+      return {
+        type: TYPES.some(function(t){ return t.key === v.type; }) ? v.type : "Equivalent",
+        query: v.query.trim(),
+        intent: INTENTS.indexOf(v.intent) > -1 ? v.intent : "Informational",
+        priority: ["High","Medium","Low"].indexOf(v.priority) > -1 ? v.priority : "Medium",
+        reason: (v.reason || "").trim()
+      };
+    });
+
+    if (!cleaned.length) throw new Error("The model didn't return any usable variants. Try again.");
+
+    state.results = cleaned;
+    state.typeFilter = TYPES.map(function(t){ return t.key; });
+    state.intentFilter = INTENTS.slice();
+    renderFilterChips();
+    renderResults();
+    $("resultsPanel").style.display = "block";
+    bumpCounter(cleaned.length);
+    pushRecent(seed);
+    showMsg("");
+  }catch(err){
+    showMsg((err && err.message) || "Something went wrong.", "error");
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = originalLabel;
+  }
+}
+
+function onClear(){
+  $("keyword").value = "";
+  $("context").value = "";
+  state.results = [];
+  $("resultsPanel").style.display = "none";
+  showMsg("");
+  $("keyword").focus();
+}
+
+function copyAllForSheets(){
+  if (!state.results.length) return;
+  var rows = ["Query\tType\tIntent\tPriority\tReason"];
+  state.results.forEach(function(r){
+    rows.push([r.query, r.type, r.intent, r.priority, r.reason || ""].join("\t"));
+  });
+  copyText(rows.join("\n"));
+  var btn = $("copyAllBtn");
+  var old = btn.textContent;
+  btn.textContent = "Copied — paste into Sheets";
+  setTimeout(function(){ btn.textContent = old; }, 1600);
+}
+
+function init(){
+  renderTypeChips();
+  renderFilterChips();
+  loadPersisted();
+  renderRecents();
+
+  $("apiKey").addEventListener("input", renderKeyStatus);
+  $("toggleKey").addEventListener("click", function(){
+    var input = $("apiKey");
+    var showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    $("toggleKey").textContent = showing ? "Show" : "Hide";
+  });
+  $("forgetKey").addEventListener("click", function(){
+    $("apiKey").value = "";
+    try{ localStorage.removeItem("fanoutfinder.apikey"); }catch(e){}
+    renderKeyStatus();
+  });
+  $("generateBtn").addEventListener("click", onGenerate);
+  $("clearBtn").addEventListener("click", onClear);
+  $("copyAllBtn").addEventListener("click", copyAllForSheets);
+  $("keyword").addEventListener("keydown", function(e){
+    if (e.key === "Enter") onGenerate();
+  });
+
+  $("keyword").focus();
+}
+
+init();
+
+})();
+</script>
+</body>
+</html>
